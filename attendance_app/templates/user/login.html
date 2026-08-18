@@ -1,0 +1,199 @@
+<!-- login.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login with Face</title>
+    <style>
+        #camera-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        video, #captured-images {
+            max-width: 320px;
+            border: 1px solid #ccc;
+        }
+        #captured-images {
+            display: none;
+            margin: 10px auto;
+            max-width: 100%;
+        }
+        #captured-images img {
+            max-width: 150px;
+            margin: 5px;
+            border: 1px solid #ccc;
+        }
+        #status {
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .btn {
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Login</h2>
+
+    {% if form.errors %}
+        <div style="color: red;">
+            {% for field in form %}
+                {% for error in field.errors %}
+                    <p>{{ error }}</p>
+                {% endfor %}
+            {% endfor %}
+            {% if form.errors %}
+                {% for error in form.errors.values %}
+                    <p>{{ error }}</p>
+                {% endfor %}
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <!-- Regular login form (optional) -->
+    <form id="login-form" method="post" action="">
+        {% csrf_token %}
+        {{ form.email.errors }}
+        <label for="{{ form.email.id_for_label }}">Email:</label>
+        {{ form.email }}
+        <br>
+
+        {{ form.password.errors }}
+        <label for="{{ form.password.id_for_label }}">Password:</label>
+        {{ form.password }}
+        <br>
+
+        <button type="submit" class="btn">Login with Password</button>
+    </form>
+
+    <hr>
+
+    <!-- Face recognition login -->
+    <h3>Login with Face (Attendance)</h3>
+
+    <div id="camera-container">
+        <video id="webcam" width="320" height="240" autoplay playsinline></video>
+        <div id="captured-images"></div>
+    </div>
+
+    <div id="status">Starting camera...</div>
+
+    <button id="capture-btn" class="btn">Capture 5 Frames & Login</button>
+    <button id="stop-btn" class="btn">Stop Camera</button>
+    <script>
+        function getCsrfToken() {
+            const tokenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+            return tokenInput ? tokenInput.value : '';
+        }
+    </script>
+    <script>
+        const video = document.getElementById('webcam');
+        const capturedDiv = document.getElementById('captured-images');
+        const captureBtn = document.getElementById('capture-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const status = document.getElementById('status');
+        const csrfToken = getCsrfToken();
+        let stream = null;
+        const FRAMES_TO_CAPTURE = 5;
+
+        // Start webcam
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 320, height: 240 },
+                    audio: false
+                });
+                video.srcObject = stream;
+                status.textContent = "Camera started. Click 'Capture 5 Frames & Login'.";
+            } catch (err) {
+                console.error(err);
+                status.textContent = "Error: Could not access camera. " + err.message;
+            }
+        }
+
+        // Stop webcam
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+                stream = null;
+                status.textContent = "Camera stopped.";
+            }
+        }
+
+        captureBtn.addEventListener('click', async () => {
+            if (!stream) {
+                status.textContent = "Camera is not running.";
+                return;
+            }
+
+            capturedDiv.innerHTML = '';
+            capturedDiv.style.display = 'none';
+            video.style.display = 'inline-block';
+
+            status.textContent = `Capturing ${FRAMES_TO_CAPTURE} frames...`;
+
+            const base64Frames = [];
+
+            for (let i = 0; i < FRAMES_TO_CAPTURE; i++) {
+                // Small delay between frames to get different images
+                await new Promise(r => setTimeout(r, 200));
+
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                const base64 = canvas.toDataURL('image/jpeg').split(',')[1];
+                base64Frames.push(base64);
+
+                const img = document.createElement('img');
+                img.src = canvas.toDataURL('image/jpeg');
+                capturedDiv.appendChild(img);
+            }
+
+            base64Frames.forEach(() => {
+                const img = document.createElement('img');
+                img.src = ""; // placeholder, already set above
+            });
+
+            capturedDiv.style.display = 'block';
+            video.style.display = 'none';
+
+            status.textContent = "Sending frames for face recognition...";
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/user/login/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ face_images: base64Frames })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    status.textContent = "Face recognized! Logging you in and marking attendance.";
+                    // window.location.href = data.redirect_url || '/dashboard/';
+                } else {
+                    status.textContent = "Face not recognized or error: " + data.message;
+                    capturedDiv.style.display = 'none';
+                    video.style.display = 'inline-block';
+                }
+            } catch (err) {
+                console.error(err);
+                status.textContent = "Error sending frames: " + err.message;
+                capturedDiv.style.display = 'none';
+                video.style.display = 'inline-block';
+            }
+        });
+
+        stopBtn.addEventListener('click', stopCamera);
+
+        // Initialize camera
+        startCamera();
+    </script>
+</body>
+</html>
