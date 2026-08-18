@@ -1,0 +1,309 @@
+<!-- register.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Register</title>
+    <style>
+        #camera-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        video, #captured-images {
+            max-width: 320px;
+            border: 1px solid #ccc;
+        }
+        #captured-images {
+            display: none;
+            margin: 10px auto;
+            max-width: 100%;
+        }
+        #captured-images img {
+            max-width: 150px;
+            margin: 5px;
+            border: 1px solid #ccc;
+        }
+        #status {
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .btn {
+            margin: 5px;
+        }
+        form {
+            max-width: 400px;
+        }
+        label, input, select, button {
+            display: block;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+        button {
+            width: auto;
+            padding: 8px 16px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Register</h2>
+
+    {% if form.errors %}
+        <div style="color: red;">
+            {% for field in form %}
+                {% for error in field.errors %}
+                    <p>{{ error }}</p>
+                {% endfor %}
+            {% endfor %}
+            {% if form.non_field_errors %}
+                {% for error in form.non_field_errors %}
+                    <p>{{ error }}</p>
+                {% endfor %}
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <!-- Regular form (submit all fields) -->
+    <form id="register-form" method="post" action="">
+        {% csrf_token %}
+
+        {{ form.employee_id.errors }}
+        <label for="{{ form.employee_id.id_for_label }}">Employee ID:</label>
+        {{ form.employee_id }}
+
+        {{ form.first_name.errors }}
+        <label for="{{ form.first_name.id_for_label }}">First Name:</label>
+        {{ form.first_name }}
+
+        {{ form.last_name.errors }}
+        <label for="{{ form.last_name.id_for_label }}">Last Name:</label>
+        {{ form.last_name }}
+
+        {{ form.email.errors }}
+        <label for="{{ form.email.id_for_label }}">Email:</label>
+        {{ form.email }}
+
+        {{ form.phone.errors }}
+        <label for="{{ form.phone.id_for_label }}">Phone:</label>
+        {{ form.phone }}
+
+        {{ form.department.errors }}
+        <label for="{{ form.department.id_for_label }}">Department:</label>
+        {{ form.department }}
+
+        {{ form.designation.errors }}
+        <label for="{{ form.designation.id_for_label }}">Designation:</label>
+        {{ form.designation }}
+
+        {{ form.gender.errors }}
+        <label for="{{ form.gender.id_for_label }}">Gender:</label>
+        {{ form.gender }}
+
+        {{ form.joining_date.errors }}
+        <label for="{{ form.joining_date.id_for_label }}">Joining Date:</label>
+        {{ form.joining_date }}
+
+        {{ form.password.errors }}
+        <label for="{{ form.password.id_for_label }}">Password:</label>
+        {{ form.password }}
+
+        {{ form.confirm_password.errors }}
+        <label for="{{ form.confirm_password.id_for_label }}">Confirm Password:</label>
+        {{ form.confirm_password }}
+
+        <hr>
+
+        <h3>Upload Face Images (for Attendance)</h3>
+
+        <div id="camera-container">
+            <video id="webcam" width="320" height="240" autoplay playsinline></video>
+            <div id="captured-images"></div>
+        </div>
+
+        <div id="status">Starting camera...</div>
+
+        <button type="button" id="capture-btn" class="btn">Capture 5 Frames</button>
+        <button type="button" id="stop-btn" class="btn">Stop Camera</button>
+
+        <!-- Hidden field to send base64 images to Django -->
+        <input type="hidden" name="face_images" id="face_images">
+
+        <button type="submit">Register (Full Form)</button>
+    </form>
+
+    <!-- Face + form register button -->
+    <br>
+    <button type="button" id="register-with-face-btn" class="btn">Register with Face</button>
+
+    <p>
+        <a href="{% url 'login' %}">Login here</a>
+    </p>
+
+    <script>
+        function getCsrfToken() {
+            const tokenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+            return tokenInput ? tokenInput.value : '';
+        }
+
+        const video = document.getElementById('webcam');
+        const capturedDiv = document.getElementById('captured-images');
+        const captureBtn = document.getElementById('capture-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const registerWithFaceBtn = document.getElementById('register-with-face-btn');
+        const status = document.getElementById('status');
+        const faceImagesInput = document.getElementById('face_images');
+        const csrfToken = getCsrfToken();
+        let stream = null;
+        const FRAMES_TO_CAPTURE = 5;
+
+        // Start webcam
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 320, height: 240 },
+                    audio: false
+                });
+                video.srcObject = stream;
+                status.textContent = "Camera started. Click 'Capture 5 Frames'.";
+            } catch (err) {
+                console.error(err);
+                status.textContent = "Error: Could not access camera. " + err.message;
+            }
+        }
+
+        // Stop webcam
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+                stream = null;
+                status.textContent = "Camera stopped.";
+            }
+        }
+
+        captureBtn.addEventListener('click', async () => {
+            if (!stream) {
+                status.textContent = "Camera is not running.";
+                return;
+            }
+
+            capturedDiv.innerHTML = '';
+            capturedDiv.style.display = 'none';
+            video.style.display = 'inline-block';
+
+            status.textContent = `Capturing ${FRAMES_TO_CAPTURE} frames...`;
+
+            const base64Frames = [];
+
+            for (let i = 0; i < FRAMES_TO_CAPTURE; i++) {
+                await new Promise(r => setTimeout(r, 200));
+
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                const base64 = canvas.toDataURL('image/jpeg').split(',')[1];
+                base64Frames.push(base64);
+
+                const img = document.createElement('img');
+                img.src = canvas.toDataURL('image/jpeg');
+                capturedDiv.appendChild(img);
+            }
+
+            capturedDiv.style.display = 'block';
+            video.style.display = 'none';
+
+            status.textContent = "Frames captured.";
+            faceImagesInput.value = JSON.stringify(base64Frames);
+        });
+
+        stopBtn.addEventListener('click', stopCamera);
+
+        // Register with face + form data as JSON
+        registerWithFaceBtn.addEventListener('click', async () => {
+            if (!stream) {
+                status.textContent = "Camera is not running.";
+                return;
+            }
+
+            // Capture frames if not already captured
+            let base64Frames;
+            if (!faceImagesInput.value) {
+                status.textContent = `Capturing ${FRAMES_TO_CAPTURE} frames for registration...`;
+
+                base64Frames = [];
+                for (let i = 0; i < FRAMES_TO_CAPTURE; i++) {
+                    await new Promise(r => setTimeout(r, 200));
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                    const base64 = canvas.toDataURL('image/jpeg').split(',')[1];
+                    base64Frames.push(base64);
+                }
+
+                capturedDiv.innerHTML = '';
+                base64Frames.forEach(base64 => {
+                    const img = document.createElement('img');
+                    img.src = 'data:image/jpeg;base64,' + base64;
+                    capturedDiv.appendChild(img);
+                });
+                capturedDiv.style.display = 'block';
+                video.style.display = 'none';
+
+                faceImagesInput.value = JSON.stringify(base64Frames);
+            } else {
+                base64Frames = JSON.parse(faceImagesInput.value);
+            }
+
+            status.textContent = "Sending data for registration...";
+
+            const formData = {
+                employee_id: document.querySelector('#id_employee_id').value,
+                first_name: document.querySelector('#id_first_name').value,
+                last_name: document.querySelector('#id_last_name').value,
+                email: document.querySelector('#id_email').value,
+                phone: document.querySelector('#id_phone').value,
+                department: document.querySelector('#id_department').value,
+                designation: document.querySelector('#id_designation').value,
+                gender: document.querySelector('#id_gender').value,
+                joining_date: document.querySelector('#id_joining_date').value,
+                password: document.querySelector('#id_password').value,
+                confirm_password: document.querySelector('#id_confirm_password').value,
+                face_images: base64Frames
+            };
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/user/register/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    status.textContent = "Registration successful!";
+                    window.location.href = data.redirect_url || '';
+                } else {
+                    status.textContent = "Registration failed: " + data.message;
+                    if (data.errors) {
+                        console.error(data.errors);
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+                status.textContent = "Error sending data: " + err.message;
+            }
+        });
+
+        // Initialize camera
+        startCamera();
+    </script>
+</body>
+</html>
